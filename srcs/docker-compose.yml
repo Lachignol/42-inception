@@ -1,0 +1,194 @@
+services:
+  nginx:
+    build: ./requirements/nginx
+    container_name: nginx
+    restart: always
+    ports:
+      - "443:443"
+    volumes:
+      - wordpress:/var/www/wordpress
+    depends_on:
+      - wordpress
+    networks:
+      - inception-network
+
+  wordpress:
+    build: ./requirements/wordpress
+    container_name: wordpress
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: mariadb
+      WORDPRESS_DB_USER: /run/secrets/db_user
+      WORDPRESS_DB_PASSWORD: /run/secrets/db_password
+      WORDPRESS_DB_NAME: /run/secrets/db_name
+      WP_ADMIN_NAME: /run/secrets/wp_admin_n
+      WP_ADMIN_PASS: /run/secrets/wp_admin_p
+      WP_ADMIN_MAIL: /run/secrets/wp_admin_m
+      WP_USER_NAME: /run/secrets/wp_user_n
+      WP_USER_PASS: /run/secrets/wp_user_p
+      WP_USER_MAIL: /run/secrets/wp_user_m
+      WP_USER_ROLE: /run/secrets/wp_user_r
+      WP_TITLE: /run/secrets/wp_title
+    volumes:
+      - wordpress:/var/www/wordpress
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    secrets:
+      - db_user
+      - db_password
+      - db_name
+      - wp_admin_n
+      - wp_admin_p
+      - wp_admin_m
+      - wp_user_n
+      - wp_user_p
+      - wp_user_m
+      - wp_user_r
+      - wp_title
+    networks:
+      - inception-network
+
+  mariadb:
+    build: ./requirements/mariadb
+    container_name: mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: /run/secrets/db_root_password
+      MARIADB_DATABASE: /run/secrets/db_name
+      MARIADB_USER: /run/secrets/db_user
+      MARIADB_PASSWORD: /run/secrets/db_password
+    volumes:
+      - mariadb:/var/lib/mysql
+    secrets:
+      - db_root_password
+      - db_user
+      - db_password
+      - db_name
+    networks:
+      - inception-network
+    healthcheck:
+      test: ["CMD","nc","-zv", "mariadb","3306"]
+      interval: 1s
+      timeout: 5s
+      retries: 11
+
+  redis:
+    build: ./bonus/redis
+    container_name: redis
+    restart: always
+    networks:
+      - inception-network
+
+  rsync:
+    build: ./bonus/rsync
+    container_name: rsync
+    restart: always
+    environment:
+      MARIADB_DATABASE: /run/secrets/db_name
+      MARIADB_USER: /run/secrets/db_user
+      MARIADB_PASSWORD: /run/secrets/db_password
+    secrets:
+      - db_user
+      - db_password
+      - db_name
+    volumes:
+      - wordpress:/var/www/html
+      - rsync:/home/backup/
+    networks:
+      - inception-network
+
+  adminer:
+    build: ./bonus/adminer
+    container_name: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - inception-network
+
+  ftp:
+    build: ./bonus/ftp
+    container_name: ftp
+    restart: always
+    environment:
+      FTP_USER: /run/secrets/ftp_user
+      FTP_PASSWORD: /run/secrets/ftp_password
+    secrets:
+      - ftp_user
+      - ftp_password
+    ports:
+      - "21:21"
+      - "30000-30009:30000-30009"
+    volumes:
+      - wordpress:/var/www/wordpress
+    networks:
+      - inception-network
+
+  static:
+    build: ./bonus/static
+    container_name: static
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "1200:1200"
+    networks:
+      - inception-network
+
+networks:
+  inception-network:
+    driver: bridge
+    
+volumes:
+  mariadb:
+    name: mariadb
+    driver: local
+    driver_opts:
+      device: /home/${USERNAME_FOLDER}/data/mariadb
+      o: bind
+      type: none
+  wordpress:
+    name: wordpress
+    driver: local
+    driver_opts:
+      device: /home/${USERNAME_FOLDER}/data/wordpress
+      o: bind
+      type: none
+  rsync:
+    name: rsync
+    driver: local
+    driver_opts:
+      device: /home/${USERNAME_FOLDER}/data/backup
+      o: bind
+      type: none
+
+secrets:
+  db_root_password:
+    file: ../secrets/db_root_password.txt
+  db_user:
+    file: ../secrets/db_user.txt
+  db_password:
+    file: ../secrets/db_password.txt
+  db_name:
+    file: ../secrets/db_name.txt
+  wp_admin_n:
+    file: ../secrets/wp_admin_name.txt
+  wp_admin_p:
+    file: ../secrets/wp_admin_pass.txt
+  wp_admin_m:
+    file: ../secrets/wp_admin_mail.txt
+  wp_user_m:
+    file: ../secrets/wp_user_mail.txt
+  wp_user_n:
+    file: ../secrets/wp_user_name.txt
+  wp_user_p:
+    file: ../secrets/wp_user_pass.txt
+  wp_user_r:
+    file: ../secrets/wp_user_role.txt
+  wp_title:
+    file: ../secrets/wp_title.txt
+  ftp_user:
+    file: ../secrets/ftp_user.txt
+  ftp_password:
+    file: ../secrets/ftp_password.txt
